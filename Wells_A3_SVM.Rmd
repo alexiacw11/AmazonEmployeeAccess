@@ -1,0 +1,496 @@
+---
+title: "Wells_A3_SVM"
+author: "Alexia Wells"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    number_sections: no
+    toc: yes
+    toc-depth: 3
+    toc-title: "Contents"
+editor_options: 
+  chunk_output_type: console
+execute:
+  warning: false
+  message: false
+---
+
+# Questions
+
+## From what perspective are you conducting the analysis? (Who are you? / Who are you working for?)
+
+I am working for Amazon as a data scientist and the company is interested in streamlining the onboarding process. In other words, they want me to predict the level of needed employee access given a new workers job role. This analysis and predictions will be done using historical data. The hope is that HR and tech will no longer need to be concerned about this task and can focus on more important matters. Ultimately, saving the company money too. 
+
+## What is your question?
+Can the implementation of SVM models effectively predict the access needs of Amazon employees based on their job roles? 
+
+## Describe your dataset(s) including URL (if available).
+
+For the purpose of this analysis, I used two datasets - train.csv and test.csv. There are 10 total columns in train with 32,769 entries. The test had 58,921 entries and 10 columns. Here is the link: https://www.kaggle.com/competitions/amazon-employee-access-challenge/data?select=train.csv. This is a kaggle competition where the submissions are evaluated based on roc accuracy. I did use kaggle as a way to validate my predictions.  
+
+
+## What is(are) your independent variable(s) and dependent variable(s)? Include variable type (binary, categorical, numeric). If you have many variables, you can list the most important and summarize the rest (e.g. important variables are... also, 12 other binary, 5 categorical...).
+
+Independent Variable:
+- ACTION, was 1 if the resource was approved, 0 if the resource was not (numeric)
+
+Dependent Variables: 
+- RESOURCE,	An ID for each resource (numeric)
+- MGR_ID,	The EMPLOYEE ID of the manager of the current EMPLOYEE ID record (numeric)
+- ROLE_ROLLUP_1,	company role grouping category id 1 (numeric)
+- ROLE_ROLLUP_2,	company role grouping category id 2 (numeric)
+- ROLE_DEPTNAME,	company role department description (numeric)
+- ROLE_TITLE,	company role business title description (numeric)
+- ROLE_FAMILY_DESC,	company role family extended description (numeric)
+- ROLE_FAMILY, company role family description (numeric)
+- ROLE_CODE, company role code and unique for each role (numeric)
+
+## How are your variables suitable for your analysis method?
+This analysis method required a binary outcome variable which we see with ACTION. 
+
+## What are your conclusions (include references to one or two CLEARLY INDICATED AND IMPORTANT graphs or tables in your output)?
+
+### Thoughts
+
+I have implemented SVM in the past with other datasets and have noticed that overall it doesn't seem to do that great. I have even had a professor tell me that he tends to stay away from those all together! Unfortunately, I feel like I had a similar experience this time around. The models did fine, but I wish they would do better, especially considering it is a blackbox method. When I think of unsupervised models, I unfairly think they should be pretty impressive, but I recognize that is not always the case. 
+
+Overall though, I feel confident with my work, especially because I am not too familar with SVM. With this dataset, there were two main issues. 1. The target variable was highly imbalanced. Please reference the **Distribution of Response.** In order to combat this, I undersampled my majority classifier using the ovun.sample function. I also trained my models with only a percentage of the data. I tried 5%, 20%, and 50%. 50% took way too long and I was worried that 5% may not have been giving my models enough to work with. Ultimately I landed on 20%. 
+
+I ended up trying two different recipes and 4 different models - logistic regression, SVM poly, SVM radial, SVM linear. I did cross validation, predictions, and created hyperplane models for each. The **Hyperplane Visualizations** were difficult to create, but I feel that they are one of the best ways to understand each of the models!
+
+### Answer
+
+In my opinion, the SVM models did not effectiveley predict the access needs of Amazon employees based on their job roles. I will why this may be the case in the limitations section.
+
+My results are all based on roc accuracy as mentioned earlier. With the complex poly recipe I got 0.50 roc_auc, with interaction poly I got 50 again. This was suprising as I figured there would be at least some sort of change. With the radial complex recipe roc_auc was 0.47946. The radial interaction recipe improved to 0.50. Lastly, the linear complex recipe got the highest score with 0.51552 and the interaction linear recipe got 0.50719. I would pick the linear SVM as having been the best results, but I think there is more work to be done. 
+
+I found these scores to be fairly low. 
+
+## What are your assumptions and limitations? What robustness checks did you perform or would you perform?
+
+### Assumptions
+- The main assumption seemed to be that the data was linearly separable. I believe that my data did pass this test, but of course, there was overlapping.
+- I made sure that any "categorical" variables (I intially turned some variables to factors instead of numeric) used target encoding
+- I centered and scaled the predictors because SVM is heavily influenced by outliers. 
+
+### Limitations and Robustness
+Limitations:
+- I had a huge dataset and I needed to limit the amount of data I was working with. I feel that my predictions could have been better if I had the resources to run the entire train dataset.
+- Unfortunately, I didn't have as much time as I usually do to complete the assignment. For that reason, I didn't get to be as exploratory or creative as I usually might be. 
+- I had a diffcult time trying to create data seperability plots and even the hyperplane plots as completed in the reading. I still did them, but I had to get more creative with my methods. 
+
+Robustness Checks:
+- I tried to take care of my first limitation by trying out different splits. Unfortunately, the highest I went was 20%, at 50% the models took way too long to run. In the future, I would try to use the whole dataset.
+- I tried 2 different recipes (complex and interaction). I feel that the differences were negligable, there was no big increase using either one. This was suprising to me and I am not sure how much a new recipe would improve my results. 
+- I used varying svm kernels - poly, radial, and svm. Linear performed the best, but not by much. 
+
+Future Approaches:
+- More approaches to balancing the data - maybe SMOTE? 
+- Maybe trying out lesser known kernels would be helpful? 
+- Look into feature engineering? Could that be useful or possible? 
+
+
+# Simple EDA
+
+```{r, include=FALSE}
+# Load libraries
+library("dataPreparation")
+library("mlbench")
+library("e1071")
+library("caret")
+library("ROCR")
+library("kernlab")
+library(yardstick)
+library(ranger)
+library(ggplot2)
+library(ROSE)
+library(tidymodels)
+library(car)
+library(GGally)
+library(kableExtra)
+```
+
+## Prepare Data
+```{r}
+# Read in the data 
+train <- vroom::vroom("train.csv")
+test <- vroom::vroom("test.csv")
+
+# Check for any nas in [train/test].csv
+any(is.na(train))
+any(is.na(test))
+
+# Take a look at the data
+#glimpse(train)
+
+# Transform response to factor
+train <- train |> 
+  mutate(ACTION = as.factor(ACTION))
+```
+
+### Checking for High Correlations
+```{r}
+# Looking for high correlations 
+all_numeric <- train |> 
+  mutate(ACTION = as.numeric(ACTION))
+
+cor(all_numeric)
+```
+
+## Tables and Graphs
+
+### Distribution of Response
+
+```{r}
+# Look at distribution of response variable
+train |> 
+  dplyr::select(ACTION) |> 
+  group_by(ACTION) |> 
+  summarize(count = n()) |> 
+  kbl() |> 
+  kable_styling()
+
+# 5.8% for minority class, so moderatly imbalanced
+1897/(1897 + 30872)
+
+# Plot of response variable - highly imbalanced.
+ggplot(data = train, mapping = aes(x=ACTION)) + geom_bar(fill = "forestgreen") +
+  xlab("Action") + ylab("Count")
+```
+
+
+### Imbalanced Data Approach
+
+```{r}
+# Balance the data with undersampling
+balanced_train <- ovun.sample(ACTION ~ ., data = train, method = "under")$data
+
+# Balanced amount of observations which may be helpful for regression tree
+ggplot(data = as.data.frame(balanced_train), mapping = aes(x=ACTION)) + geom_bar(fill = "forestgreen") +
+  xlab("Action") + ylab("Count")
+```
+
+### Large Dataset Approach
+```{r}
+# This section can also count as a robustness check
+
+# Take 5% of balanced data
+perc_balanced <- balanced_train %>%
+  sample_frac(0.05)
+
+# After running models, I want to see if I can run them with 50% of the data, maybe that will help accuracy, doesn't work!!
+perc_balanced <- balanced_train %>%
+  sample_frac(0.50)
+
+# Take 20% of balanced data
+perc_balanced <- balanced_train %>%
+  sample_frac(0.20)
+```
+
+### Plots for Linear Seperability
+From what I can tell, it does not seem like the data is cleanly separable. There are areas where blue and red points are mixed or even overlap. This could be a hint that a linear svm might not be the best option, we will have to see. 
+```{r}
+# Plots to see if the data is linearly separable 
+
+# Prepare data for plotting
+perc_balanced$ACTION <- as.factor(perc_balanced$ACTION)  # Convert ACTION to factor
+
+# Generate pairwise plot but only showing the scatterplot, didn't want the other data to be too distracting 
+ggpairs(perc_balanced, 
+        columns = 2:ncol(perc_balanced),
+        aes(color = ACTION), # Color points by target
+        lower = list(continuous = wrap("points")),  # Show scatterplots in lower triangle
+        upper = list(continuous = wrap("blank")),   # No upper triangle plots
+        diag = list(continuous = wrap("blank")),     # No diagonal plot
+        title = "Pairwise Plot of Features by ACTION Class")
+
+
+# One of the plots above up close
+ggplot(train, aes(x = RESOURCE, y = MGR_ID, color = as.factor(ACTION))) +
+  geom_point(alpha = 0.6, size = 2) +
+  labs(title = "Scatter Plot to Check Linearly Separable Classes",
+       x = "RESOURCE", y = "MGR_ID", color = "ACTION") +
+  theme_minimal() +
+  scale_color_manual(values = c("red", "blue"))
+```
+
+# Modeling
+
+## Recipes
+
+### Complex Recipe
+```{r}
+# Complex recipe
+my_recipe <- recipe(ACTION ~ ., data = perc_balanced) |> 
+  step_dummy(all_nominal_predictors()) %>% #make dummy variables
+  step_nzv(all_nominal_predictors())  |>  # Check for near zero variance 
+  step_normalize(all_numeric_predictors()) # Make mean 0, sd=1, encode categorical predictor variables using one-hot-encoding
+
+prepped_recipe <- prep(my_recipe)
+
+# Do same process to test data
+baked_test <- bake(prepped_recipe, new_data = test)
+
+# Check if there are NAS???
+```
+
+### Interaction Recipe
+```{r}
+# For this section, I just thought of which variables could have interactions
+my_recipe <- recipe(ACTION ~ ., data = perc_balanced) |> 
+  step_dummy(all_nominal_predictors()) %>% #make dummy variables
+  step_nzv(all_nominal_predictors())  |>  # Check for near zero variance 
+  step_normalize(all_numeric_predictors()) |> # Make mean 0, sd=1, encode categorical predictor variables using one-hot-encoding
+  step_interact(terms = ~ MGR_ID:RESOURCE + ROLE_ROLLUP_1:ROLE_ROLLUP_2 + 
+                  ROLE_DEPTNAME:ROLE_TITLE + ROLE_FAMILY_DESC:ROLE_FAMILY + 
+                  ROLE_CODE:RESOURCE) 
+
+prepped_recipe <- prep(my_recipe)
+
+# Do same process to test data
+baked_test <- bake(prepped_recipe, new_data = test)
+```
+
+## Varing models
+
+### Preliminary Logistic Regression Model
+I was expecting to see more significant predictors... this encouraged me to check for multicollinearity, but there is none. My next thought was to try out a recipe that had interactions. 
+```{r}
+# Juice previously prepped_recipe
+juiced <- prep(my_recipe) %>%
+  juice
+
+# No Nas, which is a good sign for our recipe up top 
+any(is.na(juiced))
+
+# Logistic regression... nothing significant except for resource
+amazon.glm<- glm(ACTION ~ ., data = juiced, family = binomial())
+
+# No multicollinearity between the variables, they all have normal vif scores
+vif(amazon.glm)
+```
+
+### Svm Poly
+
+```{r}
+## SvmPoly
+svmPoly <- svm_poly(degree=tune(), cost=tune()) %>% # set or tune
+set_mode("classification") %>%
+set_engine("kernlab")
+
+grid_of_tuning_params <- grid_regular(degree(), cost(), levels = 5) 
+
+# Create workflow with model and recipe
+svm_poly_wf <- workflow() %>% 
+  add_recipe(my_recipe) %>% 
+  add_model(svmPoly)
+
+folds <- vfold_cv(perc_balanced, v=5, repeats = 1)
+
+# Run the poly CV
+CV_poly_results <- svm_poly_wf %>%
+  tune_grid(resamples=folds, 
+            grid=grid_of_tuning_params, 
+            metrics=metric_set(roc_auc, f_meas, sens, spec, accuracy))
+
+# svmPoly plot results
+collect_metrics(CV_poly_results) %>%
+  filter(.metric == "roc_auc") %>%
+  ggplot(data=., aes(x=degree, y=mean, color=factor(cost))) + 
+  geom_line()
+
+# Find best tuning parameter
+# Poly
+polyTune <- CV_poly_results %>%
+  select_best(metric = "roc_auc")
+
+# Finalize workflow
+final_wf_poly <- svm_poly_wf %>%
+  finalize_workflow(polyTune) %>% 
+  fit(data=perc_balanced)
+
+```
+
+### SvmRadial 
+```{r}
+# svmRadial
+svmRadial <- svm_rbf(rbf_sigma=tune(), cost=tune()) %>% # set or tune
+set_mode("classification") %>%
+set_engine("kernlab")
+
+grid_of_tuning_params <- grid_regular(rbf_sigma(), cost(), levels = 5)
+
+# Create workflow with model and recipe
+svm_radial_wf <- workflow() %>% 
+  add_recipe(my_recipe) %>% 
+  add_model(svmRadial)
+
+# Run the radial CV
+CV_radial_results <- svm_radial_wf %>%
+  tune_grid(resamples=folds, 
+            grid=grid_of_tuning_params, 
+            metrics=metric_set(roc_auc, f_meas, sens, spec, accuracy))
+
+# svmRadial plot results
+collect_metrics(CV_radial_results) %>%
+  filter(.metric == "roc_auc") %>%
+  ggplot(data=., aes(x=rbf_sigma, y=mean, color=factor(cost))) + 
+  geom_line()
+
+# Radial
+radialTune <- CV_radial_results %>%
+  select_best(metric = "roc_auc")
+
+# Finalize the workflow and fit it
+final_wf_radial <- svm_radial_wf %>%
+  finalize_workflow(radialTune) %>% 
+  fit(data=perc_balanced)
+
+```
+
+### SVM Linear
+```{r}
+# svmLinear
+svmLinear <- svm_linear(cost=tune()) %>% # set or tune
+set_mode("classification") %>%
+set_engine("kernlab")
+
+grid_of_tuning_params <- grid_regular(cost(), levels = 5) 
+
+# Create workflow with model and recipe
+
+svm_linear_wf <- workflow() %>% 
+  add_recipe(my_recipe) %>% 
+  add_model(svmLinear)
+
+# Run the linear CV
+CV_linear_results <- svm_linear_wf %>%
+  tune_grid(resamples=folds, 
+            grid=grid_of_tuning_params, 
+            metrics=metric_set(roc_auc, f_meas, sens, spec, accuracy))
+
+# svmLinear plot results
+collect_metrics(CV_linear_results) %>%
+  filter(.metric == "roc_auc") %>%
+  ggplot(data=., aes(x=cost, y=mean, color=factor(cost))) + 
+  geom_line()
+
+# Linear
+linearTune <- CV_linear_results %>%
+  select_best(metric = "roc_auc")
+
+# Finalize workflow and fit
+final_wf_linear <- svm_linear_wf %>%
+  finalize_workflow(linearTune) %>% 
+  fit(data=perc_balanced)
+```
+
+
+
+## Hyperplane Visualizations 
+
+### Complex with Interaction Poly Hyperplane Visualization
+```{r}
+grid_x1 <- seq(min(perc_balanced$ROLE_ROLLUP_1) - 1, max(perc_balanced$ROLE_ROLLUP_1) + 1, length = 100)
+grid_x2 <- seq(min(perc_balanced$ROLE_ROLLUP_2) - 1, max(perc_balanced$ROLE_ROLLUP_2) + 1, length = 100)
+grid <- expand.grid(ROLE_ROLLUP_1 = grid_x1, ROLE_ROLLUP_2 = grid_x2)
+
+# Add the other required columns with dummy values (you can use the first row of perc_balanced)
+dummy_row <- perc_balanced[1, c("RESOURCE", "MGR_ID", "ROLE_DEPTNAME", "ROLE_TITLE", "ROLE_FAMILY_DESC", "ROLE_FAMILY", "ROLE_CODE", "ACTION")]
+
+# Repeat the dummy row for the number of rows in the grid
+dummy_rows <- dummy_row[rep(seq_len(nrow(dummy_row)), each = nrow(grid)), , drop = FALSE]
+poly_grid <- cbind(dummy_rows, grid)
+
+# Add predictions to the grid
+poly_grid$predicted <- predict(final_wf_poly, new_data = poly_grid)$.pred_class
+
+# Visualize the hyperplane
+
+# LINEAR hyperplane
+ggplot(perc_balanced, aes(x = ROLE_ROLLUP_1, y = ROLE_ROLLUP_2, color = ACTION)) +
+  geom_point(size = 2) +
+  geom_tile(data = poly_grid, aes(fill = predicted), alpha = 0.3) +
+  labs(title = "SVM Hyperplane Visualization",
+       x = "ROLE_ROLLUP_1",
+       y = "ROLE_ROLLUP_2") +
+  scale_fill_manual(values = c("red", "blue"), name = "Predicted") +
+  theme_minimal()
+```
+
+
+### Complex with Interaction Radial Hyperplane Visualization
+```{r}
+radial_grid <- cbind(dummy_rows, grid)
+
+# Add predictions to the grid
+radial_grid$predicted <- predict(final_wf_radial, new_data = radial_grid)$.pred_class
+
+# Visualize the hyperplane
+
+# LINEAR hyperplane
+ggplot(perc_balanced, aes(x = ROLE_ROLLUP_1, y = ROLE_ROLLUP_2, color = ACTION)) +
+  geom_point(size = 2) +
+  geom_tile(data = radial_grid, aes(fill = predicted), alpha = 0.3) +
+  labs(title = "SVM Hyperplane Visualization",
+       x = "ROLE_ROLLUP_1",
+       y = "ROLE_ROLLUP_2") +
+  scale_fill_manual(values = c("red", "blue"), name = "Predicted") +
+  theme_minimal()
+```
+
+### Complex with Interaction Linear Hyperplane Visualization
+```{r}
+linear_grid <- cbind(dummy_rows, grid)
+
+# Add predictions to the grid
+linear_grid$predicted <- predict(final_wf_linear, new_data = linear_grid)$.pred_class
+
+# Visualize the hyperplane
+
+# LINEAR hyperplane
+ggplot(perc_balanced, aes(x = ROLE_ROLLUP_1, y = ROLE_ROLLUP_2, color = ACTION)) +
+  geom_point(size = 2) +
+  geom_tile(data = linear_grid, aes(fill = predicted), alpha = 0.3) +
+  labs(title = "SVM Hyperplane Visualization",
+       x = "ROLE_ROLLUP_1",
+       y = "ROLE_ROLLUP_2") +
+  scale_fill_manual(values = c("red", "blue"), name = "Predicted") +
+  theme_minimal()
+```
+
+
+## Actual Predictions
+```{r, eval=FALSE}
+predictions <- predict(final_wf_poly, new_data = baked_test, type="prob")
+predictions <- predict(final_wf_radial, new_data = baked_test, type="prob")
+predictions <- predict(final_wf_svm, new_data = baked_test, type="prob")
+```
+
+## Prepare for Kaggle Challenge Submission
+```{r, eval=FALSE}
+kaggle_submission <- predictions %>%  
+  bind_cols(., test) %>% 
+  dplyr::select(id, .pred_1) %>% 
+  rename(ACTION= .pred_1)
+
+# Poly SVM
+#50.00 roc_auc with complex recipe, 50 with 20% split, 50 with interaction recipe
+vroom::vroom_write(x=kaggle_submission, file="./PolySVMPredictions.csv", delim=",")  
+
+# Radial SVM
+# 0.47946 roc_auc with complex recipe, 0.50000 with interaction recipe, 
+vroom::vroom_write(x=kaggle_submission, file="./RadialSVMPredictions.csv", delim=",") 
+
+# Linear SVM
+#0.51552 roc_auc with complex, 0.50719 with interaction recipe
+vroom::vroom_write(x=kaggle_submission, file="./LinearSVMPredictions.csv", delim=",") 
+``` 
+
+
+
+
+
+
+
+

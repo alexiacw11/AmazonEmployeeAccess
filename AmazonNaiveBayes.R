@@ -24,10 +24,25 @@ balanced_train <- ovun.sample(ACTION ~ ., data = train, method = "under")$data
 ten_perc <- balanced_train |> 
   sample_frac(0.10)
 
-# Recipe
+# Recipe - 0.69090
 my_recipe <- recipe(ACTION ~ ., data = ten_perc) |> 
-  step_mutate_at(all_nominal_predictors(), fn=factor) |> 
-  step_normalize(all_nominal_predictors())
+  step_mutate_at(all_numeric_predictors(), fn=factor) |> 
+  step_normalize(all_numeric_predictors())
+
+# Recipe - 0.58715
+my_recipe <- recipe(ACTION ~ ., data = ten_perc) |> 
+  step_mutate_at(all_numeric_predictors(), fn=factor) |> 
+  step_normalize(all_numeric_predictors()) |> 
+  step_novel(all_nominal_predictors()) |> 
+  step_dummy(all_nominal_predictors()) |> 
+  step_pca(all_predictors(), threshold=0.85)
+
+# Recipe - 0.59053
+my_recipe <- recipe(ACTION ~ ., data = ten_perc) |> 
+  step_mutate_at(all_numeric_predictors(), fn=factor) |> 
+  step_novel(all_nominal_predictors()) |> 
+  step_dummy(all_nominal_predictors()) |> 
+  step_pca(all_predictors(), threshold=0.85)
 
 nb_model <- naive_Bayes(Laplace = tune(), smoothness = tune()) |> 
   set_mode("classification") |> 
@@ -68,14 +83,7 @@ kaggle_submission <- predictions %>%
   dplyr::select(id, .pred_1) %>% 
   rename(ACTION= .pred_1)
 
-# 0.57637
 vroom::vroom_write(kaggle_submission, "NaiveBayesPreds.csv", delim = ",")
-
-# Here I included this line in my recipe - step_lencode_mixed(all_nominal_predictors(), outcome = vars(ACTION))
-#0.57330, did worse
-vroom::vroom_write(kaggle_submission, "NaiveBayesUpdatedPreds.csv", delim = ",")
-
-
 
 
 
